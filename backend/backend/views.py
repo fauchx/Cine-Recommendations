@@ -1,17 +1,43 @@
-from django.http import JsonResponse
-from django.db import connection
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from .models import Users
+from .serializers import UsersSerializers, UserLoginSerializer, UserSignUpSerializer
 
-def get_users(request):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT id_user, nombre, email FROM users")
-        rows = cursor.fetchall()
+class UserViewSet(viewsets.GenericViewSet):
+    queryset = Users.objects.all()  # Fetch all users without filtering
+    serializer_class = UsersSerializers
+
+    @action(detail=False, methods=['post'])
+    def login(self, request):
+        print(request.data)
+        serializer = UserLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # This should return the authenticated user and the token
+        user, token = serializer.create(serializer.validated_data)  
+        data = {
+            'user': UsersSerializers(user).data,
+            'access_token': token
+        }
+
+        return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def signup(self, request):
+        serializer = UserSignUpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-    users = []
-    for row in rows:
-        users.append({
-            'id_user': row[0],
-            'nombre': row[1],
-            'email': row[2],
-        })
-    
-    return JsonResponse(users, safe=False)
+        # Save the user instance
+        user = serializer.save()  
+        data = UsersSerializers(user).data
+        
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def get_users(self, request):
+        # This action fetches all users
+        users = self.queryset  # Use the queryset defined at the class level
+        serializer = self.get_serializer(users, many=True)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
